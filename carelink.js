@@ -263,7 +263,7 @@ var Client = exports.Client = function (options = {}) {
 
             throw new Error('Failed to download Carelink data');
         } catch (e) {
-            callback(`${e.toString()}\nstack: ${e.stack}`, null);
+            callback(e, null);
         }
     }
 
