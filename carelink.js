@@ -7,8 +7,6 @@ var _ = require('lodash'),
     tough = require('tough-cookie'),
     qs = require('qs');
 
-var logger = require('./logger');
-
 var CARELINK_EU = process.env['MMCONNECT_SERVER'] === 'EU';
 
 var DEFAULT_MAX_RETRY_DURATION = module.exports.defaultMaxRetryDuration = 512;
@@ -29,9 +27,15 @@ var carelinkJsonUrlNow = function () {
     return (CARELINK_EU ? CARELINKEU_JSON_BASE_URL : CARELINK_JSON_BASE_URL) + Date.now();
 };
 
-var Client = exports.Client = function (options) {
+var Client = exports.Client = function (options = {}) {
     if (!(this instanceof Client)) {
         return new Client(arguments[0]);
+    }
+
+    const logger = require('./logger');
+
+    if (options.verbose) {
+        logger.setVerbose();
     }
 
     const axiosInstance = axios.create({});
