@@ -145,25 +145,48 @@ var Client = exports.Client = function (options) {
         return await axiosInstance.get(response.headers.location, {maxRedirects: 0});
     }
 
-    async function refreshTokenEu() {
+    async function refreshTokenEu(alternativeHeaders) {
+        const headers = alternativeHeaders || {
+            Authorization: "Bearer " + _.get(getCookie(CARELINKEU_TOKEN_COOKIE), 'value', ''),
+        };
         return await axiosInstance.post(
             CARELINKEU_REFRESH_TOKEN_URL,
             {},
             {
-                headers: {
-                    Authorization: "Bearer " + _.get(getCookie(CARELINKEU_TOKEN_COOKIE), 'value', ''),
-                },
+                headers,
             },
-        ).catch(async function (error) {
-            if (error.response && error.response.status === 401) {
-                // Login again
-                await checkLogin();
-            } else {
-                throw error;
+        ).catch((error) => {
+            if (error.response && error.response.status === 403) {
+                if (!alternativeHeaders) {
+                    // Try with just a different user agent
+                    logger.log('Got HTTP 403, trying with alternative user agent');
+                    return refreshTokenEu({
+                        Authorization: "Bearer " + (getCookie(CARELINKEU_TOKEN_COOKIE) || ''),
+                        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:83.0) Gecko/20100101 Firefox/83.0",
+                    });
+                }
+                if (!alternativeHeaders.Authorization) {
+                    // Try with modified cookie settings too
+                    logger.log('Still got HTTP 403, trying with an empty cookie');
+                    return refreshTokenEu({
+                        Authorization: "Bearer " + (getCookie(CARELINKEU_TOKEN_COOKIE) || ''),
+                        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:83.0) Gecko/20100101 Firefox/83.0",
+                        Cookie: '',
+                    });
+                }
             }
+            throw error;
+        }).catch((error) => {
+            const status = error.response ? error.response.status : undefined;
+            if (status === 401 || status === 403) {
+                // Login again
+                logger.log('Got HTTP ' + status + ', trying with a fresh login...');
+                return checkLogin(true);
+            }
+            throw error;
         });
-    }
-
+    }        
+ 
     async function getConnectData() {
         var url = carelinkJsonUrlNow();
         logger.log('GET ' + url);
@@ -178,10 +201,10 @@ var Client = exports.Client = function (options) {
         return await axiosInstance.get(url, config);
     }
 
-    async function checkLogin() {
+    async function checkLogin(relogin = false) {
         if (CARELINK_EU) {
             // EU - SSO method
-            if (haveCookie(CARELINKEU_TOKEN_COOKIE) || haveCookie(CARELINKEU_TOKENEXPIRE_COOKIE)) {
+            if (!relogin && (haveCookie(CARELINKEU_TOKEN_COOKIE) || haveCookie(CARELINKEU_TOKENEXPIRE_COOKIE))) {
                 let expire = new Date(Date.parse(_.get(getCookie(CARELINKEU_TOKENEXPIRE_COOKIE), 'value')));
 
                 // Refresh token if expires in 10 minutes
